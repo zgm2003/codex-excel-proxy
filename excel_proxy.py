@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 import uvicorn
 
 import excel_session_capture
@@ -142,7 +142,19 @@ async def responses(request: Request):
 
 @app.get("/")
 async def root():
-    return {"name": "Excel Responses Proxy", "upstream": UPSTREAM}
+    return FileResponse("dashboard.html")
+
+
+@app.get("/auth/login")
+async def auth_login():
+    from fastapi.responses import RedirectResponse
+
+    return RedirectResponse("https://chatgpt.com/auth/login")
+
+
+@app.get("/ui")
+async def ui():
+    return FileResponse("dashboard.html")
 
 
 if __name__ == "__main__":

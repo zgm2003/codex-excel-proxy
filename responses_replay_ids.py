@@ -8,7 +8,16 @@ import threading
 from collections import OrderedDict
 from collections.abc import Mapping
 
-from request_headers import responses_replay_affinity_value
+def responses_replay_affinity_value(body, *, subagent=None):
+    """Return a stable Excel conversation affinity without legacy headers."""
+    if isinstance(body, dict):
+        for key in ("prompt_cache_key", "promptCacheKey", "session_id", "sessionId"):
+            value = body.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    if isinstance(subagent, str) and subagent.strip():
+        return subagent.strip()
+    return None
 
 
 _MAX_LINEAGE_STATES = 256

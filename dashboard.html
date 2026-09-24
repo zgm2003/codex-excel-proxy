@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Office 模型代理</title>
+  <style>
+    :root { color-scheme: dark; --bg:#101314; --panel:#171b1c; --line:#2a3231; --ink:#edf3ee; --muted:#8e9c96; --mint:#93d6b0; --amber:#f0bc72; --red:#ef817b; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; background:var(--bg); color:var(--ink); font:15px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace; }
+    main { max-width:960px; margin:0 auto; padding:56px 24px 72px; }
+    header { display:flex; justify-content:space-between; align-items:flex-start; gap:24px; border-bottom:1px solid var(--line); padding-bottom:28px; }
+    h1 { margin:0; font:600 clamp(28px,5vw,48px)/1.05 Georgia,serif; letter-spacing:0; }
+    .eyebrow { color:var(--mint); font-size:12px; letter-spacing:0; margin-bottom:12px; text-transform:uppercase; }
+    .endpoint { color:var(--muted); text-align:right; font-size:12px; }
+    .hero { display:grid; grid-template-columns:1.25fr .75fr; gap:18px; margin-top:28px; }
+    .panel { background:var(--panel); border:1px solid var(--line); padding:24px; border-radius:6px; }
+    .status { min-height:210px; display:flex; flex-direction:column; justify-content:space-between; }
+    .status-row { display:flex; align-items:center; gap:12px; }
+    .dot { width:12px; height:12px; border-radius:50%; background:var(--amber); box-shadow:0 0 0 5px #f0bc7220; }
+    .dot.ok { background:var(--mint); box-shadow:0 0 0 5px #93d6b020; }
+    .dot.bad { background:var(--red); box-shadow:0 0 0 5px #ef817b20; }
+    .status-title { font-size:22px; }
+    .muted { color:var(--muted); }
+    .facts { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    .fact-label { color:var(--muted); font-size:11px; text-transform:uppercase; margin-bottom:4px; }
+    .fact-value { overflow-wrap:anywhere; }
+    h2 { margin:0 0 18px; font-size:14px; font-weight:500; color:var(--mint); }
+    .models { display:grid; gap:10px; }
+    .model { display:flex; justify-content:space-between; gap:12px; border-bottom:1px solid var(--line); padding:10px 0; }
+    button { border:1px solid var(--mint); color:var(--bg); background:var(--mint); padding:11px 15px; border-radius:4px; font:600 13px ui-monospace,monospace; cursor:pointer; }
+    button.secondary { color:var(--ink); background:transparent; border-color:var(--line); }
+    button:hover { filter:brightness(1.08); }
+    a.button { display:inline-block; border:1px solid var(--mint); color:var(--bg); background:var(--mint); padding:11px 15px; border-radius:4px; font:600 13px ui-monospace,monospace; text-decoration:none; }
+    button:disabled { opacity:.55; cursor:wait; }
+    .actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:22px; }
+    .notice { margin-top:18px; color:var(--muted); font-size:13px; }
+    .notice strong { color:var(--ink); font-weight:500; }
+    @media (max-width:700px) { main { padding:32px 16px 48px; } header,.hero { display:block; } .endpoint { text-align:left; margin-top:16px; } .panel { margin-top:14px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div><div class="eyebrow">本地控制台 / Office 模型上游</div><h1>Office 模型<br>代理</h1></div>
+      <div class="endpoint">127.0.0.1:8000<br><span class="muted">Basispoints 上游</span></div>
+    </header>
+    <section class="hero">
+      <article class="panel status">
+        <div><div class="status-row"><span id="dot" class="dot"></span><span id="statusTitle" class="status-title">正在读取状态</span></div><p id="statusText" class="muted">正在检查 Office 插件缓存。</p></div>
+        <div class="facts"><div><div class="fact-label">默认模型</div><div id="model" class="fact-value">-</div></div><div><div class="fact-label">凭据有效期</div><div id="expires" class="fact-value">-</div></div></div>
+        <div class="actions"><a class="button" href="/auth/login">前往 ChatGPT 登录</a><button id="refresh">重新读取插件凭据</button><button id="clear" class="secondary">清除本地凭据</button></div>
+      </article>
+      <article class="panel"><h2>可用模型与工作场景</h2><div id="models" class="models"><div class="muted">加载中...</div></div><p class="notice"><strong>先登录，再回到 Office 插件。</strong><br>按钮会打开 ChatGPT 登录页；登录后请打开 Excel、Word、PowerPoint、Outlook 或 OneNote 中的 ChatGPT 插件，让代理读取本地凭据。</p></article>
+    </section>
+  </main>
+  <script>
+    const $ = id => document.getElementById(id);
+    const fmt = value => value ? new Date(value * 1000).toLocaleString() : '未设置';
+    async function load() {
+      const [session, models] = await Promise.all([fetch('/api/config/excel-session').then(r=>r.json()), fetch('/v1/models').then(r=>r.json())]);
+      const configured = session.configured && !session.expired;
+      $('dot').className = 'dot ' + (configured ? 'ok' : session.configured ? 'bad' : '');
+      $('statusTitle').textContent = configured ? '已认证，可发送请求' : session.configured ? 'session 已过期' : '尚未认证';
+      $('statusText').textContent = configured ? '已捕获 Office 插件凭据。' : '请在 Office 的 ChatGPT 插件中登录，然后点击重新读取。';
+      $('model').textContent = session.model || '-'; $('expires').textContent = fmt(session.expires_at);
+      $('models').innerHTML = (models.data || []).map(m => `<div class="model"><span>${m.id}</span><span class="muted">${m.owned_by}</span></div>`).join('');
+    }
+    $('refresh').onclick = async () => { $('refresh').disabled = true; try { await fetch('/api/config/excel-session',{method:'POST'}); await load(); } finally { $('refresh').disabled = false; } };
+    $('clear').onclick = async () => { if (confirm('清除本地 Excel session？')) { await fetch('/api/config/excel-session',{method:'DELETE'}); await load(); } };
+    load().catch(() => { $('statusTitle').textContent='代理未响应'; $('statusText').textContent='请确认 excel_proxy.py 正在运行。'; $('dot').className='dot bad'; });
+  </script>
+</body>
+</html>

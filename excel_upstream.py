@@ -27,12 +27,13 @@ import responses_replay_ids
 
 
 EXCEL_MODEL_UPSTREAMS = {
-    "gpt-5.6-luna-excel": "gpt-5.6-luna",
-    "gpt-5.6-terra-excel": "gpt-5.6-terra",
-    "gpt-5.6-sol-excel": "gpt-5.6-sol",
+    "gpt-6-astra": "gpt-6-astra",
+    "gpt-5.6-sol": "gpt-5.6-sol",
+    "gpt-5.6-luna": "gpt-5.6-luna",
+    "gpt-5.6-terra": "gpt-5.6-terra",
 }
-MODEL_IDS = tuple(EXCEL_MODEL_UPSTREAMS)
-MODEL_ID = "gpt-5.6-sol-excel"
+MODEL_IDS = ("gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-luna", "gpt-5.6-terra")
+MODEL_ID = "gpt-6-astra"
 _UPSTREAM_MODEL_OVERRIDE = os.environ.get("GHCP_EXCEL_UPSTREAM_MODEL", "").strip()
 UPSTREAM_MODEL = _UPSTREAM_MODEL_OVERRIDE or EXCEL_MODEL_UPSTREAMS[MODEL_ID]
 EXCEL_REASONING_EFFORTS = ("low", "medium", "high", "xhigh")
@@ -153,9 +154,14 @@ LOCAL_MODEL_CAPABILITIES = {
         "auto_compact_token_limit": 180_000,
         "context_window": 200_000 if "luna" in model_id else 272_000,
         "display_name": {
-            "gpt-5.6-luna-excel": "5.6-Luna Excel",
-            "gpt-5.6-terra-excel": "5.6-Terra Excel",
-            "gpt-5.6-sol-excel": "5.6-Sol Excel",
+            "gpt-6-astra": "GPT-6 Astra",
+            "gpt-5.6-sol": "GPT-5.6 Sol",
+            "gpt-5.6-luna": "GPT-5.6 Luna",
+            "gpt-5.6-terra": "GPT-5.6 Terra",
+            "gpt-6-astra": "GPT-6 Astra",
+            "gpt-5.6-luna": "GPT-5.6 Luna",
+            "gpt-5.6-terra": "GPT-5.6 Terra",
+            "gpt-5.6-sol": "GPT-5.6 Sol",
         }.get(model_id, model_id.removesuffix("-excel").upper().replace("GPT-", "GPT ")),
         "input_modalities": ["text"],
         "max_context_window": 200_000 if "luna" in model_id else 272_000,
@@ -163,6 +169,7 @@ LOCAL_MODEL_CAPABILITIES = {
         "model_picker_enabled": True,
         "parallel_tool_calls": False,
         "provider": "OpenAI Excel",
+        "workloads": ["Excel", "Word", "PowerPoint", "Outlook", "OneNote", "Word 混搭"],
         "reasoning_efforts": list(EXCEL_REASONING_EFFORTS),
         "supported_endpoints": ["/responses"],
         "vision": False,
@@ -196,11 +203,19 @@ def _normalize_reasoning_effort(value: object) -> str | None:
 
 
 def local_model_payload(model_id: str) -> dict[str, object]:
+    capabilities = LOCAL_MODEL_CAPABILITIES.get(model_id, {})
     return {
         "id": model_id,
         "object": "model",
         "created": 0,
         "owned_by": "openai-excel",
+        "provider": capabilities.get("provider", "OpenAI Excel"),
+        "display_name": capabilities.get("display_name", model_id),
+        "reasoning_efforts": capabilities.get("reasoning_efforts", list(EXCEL_REASONING_EFFORTS)),
+        "supported_endpoints": capabilities.get("supported_endpoints", ["/responses"]),
+        "workloads": capabilities.get("workloads", []),
+        "context_window": capabilities.get("context_window"),
+        "parallel_tool_calls": capabilities.get("parallel_tool_calls", False),
     }
 
 
