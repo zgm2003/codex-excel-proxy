@@ -1,12 +1,3 @@
 fastapi>=0.136.1,<1
-# Stream-level steering cancellation uses the verified httpx/httpcore 0.28.1
-# response wrapper layout to emit HTTP/2 RST_STREAM(CANCEL).
-httpx[http2]==0.28.1
-httpcore==1.0.9
+httpx==0.28.1
 uvicorn>=0.46.0,<1
-zstandard>=0.25.0,<1
-cryptography>=48.0.0,<49
-github-copilot-sdk>=1.0.11,<2
-# The proxy's SDK request handler routes runtime model calls through Python;
-# the SDK forwards WebSocket model connections with this package.
-websockets>=14,<17
