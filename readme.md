@@ -1,3 +1,5 @@
+AI社区：http://linux.do
+
 # Codex Excel Proxy
 
 把 ChatGPT Excel 插件（Basispoints）的上游收敛成一个本地 OpenAI Responses 兼容代理。
