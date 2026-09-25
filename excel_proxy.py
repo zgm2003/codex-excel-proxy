@@ -145,13 +145,6 @@ async def root():
     return FileResponse("dashboard.html")
 
 
-@app.get("/auth/login")
-async def auth_login():
-    from fastapi.responses import RedirectResponse
-
-    return RedirectResponse("https://chatgpt.com/auth/login")
-
-
 @app.get("/ui")
 async def ui():
     return FileResponse("dashboard.html")

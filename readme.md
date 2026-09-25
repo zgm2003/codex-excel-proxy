@@ -20,9 +20,10 @@ py -3 -m venv .venv
 
 ## 模型
 
-- `gpt-5.6-luna-excel`
-- `gpt-5.6-terra-excel`
-- `gpt-5.6-sol-excel`
+- `gpt-6-astra`（默认）
+- `gpt-5.6-sol`
+- `gpt-5.6-luna`
+- `gpt-5.6-terra`
 
 三种别名分别映射到 Basispoints 的 `gpt-5.6-luna`、`gpt-5.6-terra`、`gpt-5.6-sol`。Excel Responses 的输入转换、prompt cache key、session 持久化、流式输出和客户端工具调用桥接均保留。
 

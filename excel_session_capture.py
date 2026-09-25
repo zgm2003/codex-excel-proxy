@@ -228,6 +228,70 @@ def _leveldb_table_entries(path: Path):
         yield from _leveldb_block_entries(read_block(block_offset, block_size))
 
 
+_LEVELDB_LOG_BLOCK_SIZE = 32768
+_LEVELDB_LOG_HEADER_SIZE = 7
+
+
+def _leveldb_log_records(data: bytes):
+    """Yield logical records from a LevelDB write-ahead log."""
+    block_offset = 0
+    pending = bytearray()
+    while block_offset + _LEVELDB_LOG_HEADER_SIZE <= len(data):
+        length = int.from_bytes(data[block_offset + 4 : block_offset + 6], "little")
+        record_type = data[block_offset + 6]
+        if record_type == 0:
+            pending.clear()
+            block_offset = (
+                block_offset // _LEVELDB_LOG_BLOCK_SIZE + 1
+            ) * _LEVELDB_LOG_BLOCK_SIZE
+            continue
+        payload_start = block_offset + _LEVELDB_LOG_HEADER_SIZE
+        payload_end = payload_start + length
+        if payload_end > len(data):
+            break
+        payload = data[payload_start:payload_end]
+        if record_type == 1:
+            pending.clear()
+            yield bytes(payload)
+        elif record_type == 2:
+            pending = bytearray(payload)
+        elif record_type == 3:
+            pending.extend(payload)
+        elif record_type == 4:
+            pending.extend(payload)
+            yield bytes(pending)
+            pending.clear()
+        else:
+            pending.clear()
+            break
+        block_offset = payload_end
+
+
+def _leveldb_write_batch_entries(payload: bytes):
+    if len(payload) < 12:
+        return
+    count = int.from_bytes(payload[8:12], "little")
+    offset = 12
+    for _ in range(count):
+        if offset >= len(payload):
+            return
+        kind = payload[offset]
+        offset += 1
+        key_length, offset = _decode_leveldb_varint(payload, offset)
+        key = payload[offset : offset + key_length]
+        offset += key_length
+        if kind == 0:
+            continue
+        value_length, offset = _decode_leveldb_varint(payload, offset)
+        value = payload[offset : offset + value_length]
+        offset += value_length
+        yield key, value
+
+
+def _leveldb_log_entries(path: Path):
+    for payload in _leveldb_log_records(path.read_bytes()):
+        yield from _leveldb_write_batch_entries(payload)
+
 def _windows_leveldb_paths(webview_root: Path) -> list[Path]:
     return sorted(
         webview_root.glob("**/EBWebView/Default/Local Storage/leveldb"),
@@ -252,17 +316,23 @@ def load_windows_excel_session(webview_root: Path | None = None) -> dict[str, st
     candidates: list[tuple[float, float, dict[str, str]]] = []
     errors: list[str] = []
     for database in _windows_leveldb_paths(root):
-        for table in sorted(database.glob("*.ldb"), reverse=True):
-            try:
-                for key, value in _leveldb_table_entries(table):
-                    if _STORAGE_KEY.encode("utf-8") not in key:
-                        continue
-                    headers, expires_at = _cached_session_headers(
-                        _decode_windows_storage_value(value)
+        for pattern in ("*.ldb", "*.log"):
+            for table in sorted(database.glob(pattern), reverse=True):
+                try:
+                    entries = (
+                        _leveldb_log_entries(table)
+                        if table.suffix == ".log"
+                        else _leveldb_table_entries(table)
                     )
-                    candidates.append((table.stat().st_mtime, expires_at, headers))
-            except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as exc:
-                errors.append(f"{table}: {exc}")
+                    for key, value in entries:
+                        if _STORAGE_KEY.encode("utf-8") not in key:
+                            continue
+                        headers, expires_at = _cached_session_headers(
+                            _decode_windows_storage_value(value)
+                        )
+                        candidates.append((table.stat().st_mtime, expires_at, headers))
+                except (OSError, UnicodeError, ValueError, json.JSONDecodeError) as exc:
+                    errors.append(f"{table}: {exc}")
     if candidates:
         return max(candidates, key=lambda item: (item[0], item[1]))[2]
     if errors:
