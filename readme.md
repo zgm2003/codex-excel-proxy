@@ -30,6 +30,7 @@ py -3 -m venv .venv
 | --- | --- | --- |
 | GET | `/v1/models`、`/models` | 模型清单，需要 API Key |
 | POST | `/v1/responses`、`/responses` | Responses API，流式透传 + 工具调用桥接，需要 API Key |
+| POST | `/v1/chat/completions`、`/chat/completions` | Chat Completions 兼容层，文本 + function 工具，需要 API Key |
 | GET | `/api/config/excel-session` | 凭据状态（是否已配置、是否过期、读取方式） |
 | POST | `/api/config/excel-session` | 立刻重新从 Excel 读一次凭据 |
 | DELETE | `/api/config/excel-session` | 清掉本地凭据 |
@@ -60,6 +61,21 @@ py -3 -m venv .venv
 
 推理档位没有 `max`，最高是 `xhigh`。
 
+## Chat Completions 兼容
+
+给只会说 `/v1/chat/completions` 的客户端用。代理内部仍然只发一次 Responses 请求，没有第二个上游。
+
+```bash
+curl http://127.0.0.1:8000/v1/chat/completions \
+  -H "Authorization: Bearer <key>" -H "Content-Type: application/json" \
+  -d '{"model":"gpt-6-astra","messages":[{"role":"user","content":"你好"}]}'
+```
+
+- `system` / `developer` 消息映射到上游 `instructions`，`user` / `assistant` / `tool` 映射到 Responses 输入项
+- `stream: true` 返回标准 `chat.completion.chunk`，结尾是 `data: [DONE]`
+- `tools` 支持 `type: function`：调用时返回 `finish_reason: "tool_calls"`，回传 `role: "tool"` 结果即可续跑。上游走 `run_officejs` 传输通道，内部会被还原成你声明的工具名，不会泄漏成客户端可见的调用
+- 图片/音频 content 直接返回 `400`，上游是纯文本，不假装支持
+- `temperature`、`top_p`、`max_tokens` 不转发：Excel 的上游线格式不带这些字段
 ## 客户端 API Key
 
 `/v1/models` 和 `/v1/responses` 强制校验，缺失或错误一律 `401`。

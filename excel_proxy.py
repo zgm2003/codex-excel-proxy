@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 import uvicorn
 
 import api_key
+import chat_compat
 import excel_session_capture
 import excel_upstream
 
@@ -51,6 +52,16 @@ async def _completed_payload(response: httpx.Response) -> dict | None:
         if isinstance(event, dict) and isinstance(event.get("response"), dict):
             payload = event["response"]
     return payload
+
+
+def _output_text(payload: dict) -> str:
+    parts: list[str] = []
+    for item in payload.get("output") or []:
+        if isinstance(item, dict) and item.get("type") == "message":
+            for part in item.get("content") or []:
+                if isinstance(part, dict) and isinstance(part.get("text"), str):
+                    parts.append(part["text"])
+    return "".join(parts)
 
 
 @asynccontextmanager
@@ -121,6 +132,69 @@ async def api_key_update(request: Request):
         return JSONResponse({"error": {"message": str(exc)}}, status_code=400)
 
 
+@app.post("/v1/chat/completions", dependencies=[Depends(require_api_key)])
+@app.post("/chat/completions", dependencies=[Depends(require_api_key)])
+async def chat_completions(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": {"message": "invalid JSON"}}, status_code=400)
+    if not isinstance(body, dict):
+        return JSONResponse({"error": {"message": "JSON object required"}}, status_code=400)
+    try:
+        source = chat_compat.responses_request_from_chat(body)
+    except chat_compat.ChatCompatError as exc:
+        return JSONResponse({"error": {"message": str(exc)}}, status_code=400)
+    await _refresh_session()
+    try:
+        headers = excel_upstream.excel_session_store.request_headers(
+            stream=bool(source.get("stream"))
+        )
+    except RuntimeError as exc:
+        return JSONResponse({"error": {"message": str(exc)}}, status_code=401)
+    model_id = excel_upstream.excel_model_id(body.get("model")) or excel_upstream.MODEL_ID
+    wire = excel_upstream.prepare_responses_body(
+        source, tools_version_id=excel_upstream.excel_session_store.tools_version_id()
+    )
+    client = httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=30.0), http2=False)
+    if wire.get("stream"):
+        upstream = await client.send(
+            client.build_request("POST", UPSTREAM, headers=headers, json=wire),
+            stream=True,
+        )
+
+        async def chat_body():
+            try:
+                async for chunk in chat_compat.chat_chunks(
+                    upstream.aiter_lines(),
+                    model_id=model_id,
+                    source=source,
+                ):
+                    yield chunk
+            finally:
+                await upstream.aclose()
+                await client.aclose()
+
+        return StreamingResponse(
+            chat_body(),
+            status_code=upstream.status_code,
+            media_type="text/event-stream",
+        )
+    try:
+        upstream = await client.post(UPSTREAM, headers=headers, json=wire)
+        payload = await _completed_payload(upstream)
+    finally:
+        await client.aclose()
+    if payload is None:
+        return JSONResponse(
+            {"error": {"message": "Basispoints returned no completed response"}},
+            status_code=502,
+        )
+    return JSONResponse(
+        chat_compat.chat_completion_from_payload(payload, model_id, source),
+        status_code=upstream.status_code,
+    )
+
 @app.post("/v1/responses", dependencies=[Depends(require_api_key)])
 @app.post("/responses", dependencies=[Depends(require_api_key)])
 async def responses(request: Request):
@@ -166,14 +240,8 @@ async def responses(request: Request):
     if payload is None:
         return JSONResponse({"error": {"message": "Basispoints returned no completed response"}}, status_code=502)
     payload["model"] = model_id
-    output_text = ""
-    for item in payload.get("output", []):
-        if isinstance(item, dict) and item.get("type") == "message":
-            for part in item.get("content", []):
-                if isinstance(part, dict) and isinstance(part.get("text"), str):
-                    output_text += part["text"]
     tool_call = excel_upstream.extract_client_tool_call(
-        output_text, excel_upstream.client_tool_types(body)
+        _output_text(payload), excel_upstream.client_tool_types(body)
     ) or excel_upstream.extract_native_client_tool_call(payload, body)
     if tool_call is not None:
         payload = excel_upstream.response_payload_with_tool_call(

@@ -61,7 +61,7 @@
       <article class="panel wide"><h2>客户端 API Key</h2>
         <div class="key-row"><input id="apiKey" readonly><button id="copyKey" class="secondary">复制</button><button id="regenKey" class="secondary">重新生成</button></div>
         <div class="key-row"><input id="customKey" placeholder="自定义 key：16-128 位可打印 ASCII"><button id="saveKey">保存自定义</button></div>
-        <p class="notice"><strong id="keySource">-</strong> · 客户端用 <code>Authorization: Bearer &lt;key&gt;</code> 调用 <code>/v1/responses</code> 和 <code>/v1/models</code>，key 缺失或错误一律 401。<span id="keyHint"></span></p>
+        <p class="notice"><strong id="keySource">-</strong> · 客户端用 <code>Authorization: Bearer &lt;key&gt;</code> 调用 <code>/v1/responses</code>、<code>/v1/chat/completions</code> 和 <code>/v1/models</code>，key 缺失或错误一律 401。<span id="keyHint"></span></p>
       </article>
     </section>
   </main>

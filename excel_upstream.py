@@ -170,7 +170,7 @@ LOCAL_MODEL_CAPABILITIES = {
         "provider": "OpenAI Excel",
         "workloads": ["Excel", "Word", "PowerPoint", "Outlook", "OneNote", "Word 混搭"],
         "reasoning_efforts": list(EXCEL_REASONING_EFFORTS),
-        "supported_endpoints": ["/responses"],
+        "supported_endpoints": ["/responses", "/chat/completions"],
         "vision": False,
     }
     for model_id in MODEL_IDS
