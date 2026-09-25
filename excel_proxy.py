@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -16,6 +17,8 @@ import excel_upstream
 
 
 UPSTREAM = excel_upstream.RESPONSES_URL
+
+DASHBOARD = Path(__file__).with_name("dashboard.html")
 
 
 def _presented_key(request: Request) -> str:
@@ -181,12 +184,12 @@ async def responses(request: Request):
 
 @app.get("/")
 async def root():
-    return FileResponse("dashboard.html")
+    return FileResponse(DASHBOARD)
 
 
 @app.get("/ui")
 async def ui():
-    return FileResponse("dashboard.html")
+    return FileResponse(DASHBOARD)
 
 
 if __name__ == "__main__":

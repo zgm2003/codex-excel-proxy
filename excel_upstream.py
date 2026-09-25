@@ -1,8 +1,7 @@
 """OpenAI Excel add-in upstream support.
 
-The official Excel add-in uses a ChatGPT session rather than the GitHub
-Copilot token used by the rest of this proxy.  Keep that credential isolated
-in memory and expose only non-secret status information.
+The official Excel add-in authenticates with a ChatGPT session.  Keep that
+credential isolated in memory and expose only non-secret status information.
 """
 
 from __future__ import annotations

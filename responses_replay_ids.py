@@ -184,7 +184,7 @@ def _trim_ordered_map(mapping: OrderedDict) -> None:
 
 
 class ReplayIdState:
-    """Per-lineage map of Copilot output item identity."""
+    """Per-lineage map of upstream output item identity."""
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
