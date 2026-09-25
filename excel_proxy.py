@@ -6,15 +6,28 @@ import json
 from contextlib import asynccontextmanager
 
 import httpx
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 import uvicorn
 
+import api_key
 import excel_session_capture
 import excel_upstream
 
 
 UPSTREAM = excel_upstream.RESPONSES_URL
+
+
+def _presented_key(request: Request) -> str:
+    authorization = request.headers.get("authorization", "")
+    if authorization.lower().startswith("bearer "):
+        return authorization[7:].strip()
+    return request.headers.get("x-api-key", "").strip()
+
+
+async def require_api_key(request: Request) -> None:
+    if not api_key.store.matches(_presented_key(request)):
+        raise HTTPException(status_code=401, detail="invalid API key")
 
 
 async def _completed_payload(response: httpx.Response) -> dict | None:
@@ -62,8 +75,8 @@ async def _refresh_session() -> None:
     )
 
 
-@app.get("/v1/models")
-@app.get("/models")
+@app.get("/v1/models", dependencies=[Depends(require_api_key)])
+@app.get("/models", dependencies=[Depends(require_api_key)])
 async def models():
     return excel_upstream.merge_local_models_payload({})
 
@@ -84,8 +97,29 @@ async def session_clear():
     return excel_upstream.excel_session_store.clear()
 
 
-@app.post("/v1/responses")
-@app.post("/responses")
+@app.get("/api/config/api-key")
+async def api_key_status():
+    return {**api_key.store.load(), "path": api_key.KEY_FILE}
+
+
+@app.post("/api/config/api-key")
+async def api_key_update(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        return JSONResponse({"error": {"message": "JSON object required"}}, status_code=400)
+    try:
+        if body.get("key") is None:
+            return {**api_key.store.regenerate(), "path": api_key.KEY_FILE}
+        return {**api_key.store.set_custom(body["key"]), "path": api_key.KEY_FILE}
+    except ValueError as exc:
+        return JSONResponse({"error": {"message": str(exc)}}, status_code=400)
+
+
+@app.post("/v1/responses", dependencies=[Depends(require_api_key)])
+@app.post("/responses", dependencies=[Depends(require_api_key)])
 async def responses(request: Request):
     try:
         body = await request.json()
@@ -105,7 +139,12 @@ async def responses(request: Request):
     timeout = httpx.Timeout(300.0, connect=30.0)
     client = httpx.AsyncClient(timeout=timeout, http2=False)
     if wire.get("stream"):
-        upstream = await client.stream("POST", UPSTREAM, headers=headers, json=wire).__aenter__()
+        # ``client.stream`` is an async context manager. Entering it through a
+        # temporary leaves nothing holding that generator, so it is finalized
+        # as soon as this function returns and its ``finally`` closes the
+        # upstream mid-stream. Send the request directly instead.
+        request = client.build_request("POST", UPSTREAM, headers=headers, json=wire)
+        upstream = await client.send(request, stream=True)
 
         async def stream_body():
             try:

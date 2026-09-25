@@ -1633,11 +1633,9 @@ def prepare_responses_body(
     )
 
     metadata: dict[str, str] = {}
-    raw_metadata = source.get("metadata")
-    if isinstance(raw_metadata, dict):
-        for key, value in raw_metadata.items():
-            if isinstance(key, str) and isinstance(value, (str, int, float, bool)):
-                metadata[key[:64]] = str(value)[:512]
+    # Caller metadata is deliberately not forwarded: Basispoints rejects any
+    # key outside its own set with a 422, and every identity key it does accept
+    # (task_id/turn_id/agent_iteration) is derived below.
     turn_fingerprint, iteration = _agent_turn_state(raw_input)
     metadata.setdefault("agent_iteration", iteration)
     # Identifiers are derived, never random: the same client request must

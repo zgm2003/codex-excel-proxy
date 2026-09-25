@@ -33,11 +33,15 @@
     button { border:1px solid var(--mint); color:var(--bg); background:var(--mint); padding:11px 15px; border-radius:4px; font:600 13px ui-monospace,monospace; cursor:pointer; }
     button.secondary { color:var(--ink); background:transparent; border-color:var(--line); }
     button:hover { filter:brightness(1.08); }
-    a.button { display:inline-block; border:1px solid var(--mint); color:var(--bg); background:var(--mint); padding:11px 15px; border-radius:4px; font:600 13px ui-monospace,monospace; text-decoration:none; }
     button:disabled { opacity:.55; cursor:wait; }
     .actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:22px; }
     .notice { margin-top:18px; color:var(--muted); font-size:13px; }
     .notice strong { color:var(--ink); font-weight:500; }
+    input { width:100%; background:#0d1011; border:1px solid var(--line); color:var(--ink); padding:11px 12px; border-radius:4px; font:13px ui-monospace,monospace; }
+    .key-row { display:flex; gap:10px; margin-bottom:12px; }
+    .key-row input { flex:1; }
+    .wide { margin-top:18px; }
+    code { color:var(--mint); }
     @media (max-width:700px) { main { padding:32px 16px 48px; } header,.hero { display:block; } .endpoint { text-align:left; margin-top:16px; } .panel { margin-top:14px; } }
   </style>
 </head>
@@ -51,16 +55,30 @@
       <article class="panel status">
         <div><div class="status-row"><span id="dot" class="dot"></span><span id="statusTitle" class="status-title">正在读取状态</span></div><p id="statusText" class="muted">正在检查 Office 插件缓存。</p></div>
         <div class="facts"><div><div class="fact-label">默认模型</div><div id="model" class="fact-value">-</div></div><div><div class="fact-label">凭据有效期</div><div id="expires" class="fact-value">-</div></div></div>
-        <div class="actions"><a class="button" href="https://chatgpt.com/auth/login" target="_blank" rel="noopener">新窗口打开 ChatGPT 登录</a><button id="refresh">重新读取插件凭据</button><button id="clear" class="secondary">清除本地凭据</button></div>
+        <div class="actions"><button id="refresh">重新读取插件凭据</button><button id="clear" class="secondary">清除本地凭据</button></div>
       </article>
-      <article class="panel"><h2>可用模型与工作场景</h2><div id="models" class="models"><div class="muted">加载中...</div></div><p class="notice"><strong>认证入口在 Office 桌面插件里。</strong><br>请在 Excel 或 Word 桌面版中打开“插入 → 获取加载项”，搜索并安装 ChatGPT 加载项，再在右侧任务窗格登录。登录后回到本页面点击“重新读取插件凭据”。</p></article>
+      <article class="panel"><h2>可用模型与工作场景</h2><div id="models" class="models"><div class="muted">加载中...</div></div><p class="notice"><strong>认证入口在 Office 桌面插件里。</strong><br>请在 Excel 或 Word 桌面版中打开"开始 → 加载项"（找不到就按 Alt+Q 搜索 Add-ins），搜索并安装 ChatGPT 加载项，再在右侧任务窗格登录。登录后回到本页面点击"重新读取插件凭据"。</p></article>
+      <article class="panel wide"><h2>客户端 API Key</h2>
+        <div class="key-row"><input id="apiKey" readonly><button id="copyKey" class="secondary">复制</button><button id="regenKey" class="secondary">重新生成</button></div>
+        <div class="key-row"><input id="customKey" placeholder="自定义 key：16-128 位可打印 ASCII"><button id="saveKey">保存自定义</button></div>
+        <p class="notice"><strong id="keySource">-</strong> · 客户端用 <code>Authorization: Bearer &lt;key&gt;</code> 调用 <code>/v1/responses</code> 和 <code>/v1/models</code>，key 缺失或错误一律 401。<span id="keyHint"></span></p>
+      </article>
     </section>
   </main>
   <script>
     const $ = id => document.getElementById(id);
     const fmt = value => value ? new Date(value * 1000).toLocaleString() : '未设置';
+    let apiKey = '';
+    const authHeaders = () => ({ authorization: 'Bearer ' + apiKey });
+    async function loadKey() {
+      const info = await fetch('/api/config/api-key').then(r => r.json());
+      apiKey = info.key;
+      $('apiKey').value = info.key;
+      $('keySource').textContent = info.source === 'custom' ? '自定义 key' : '自动生成 key';
+    }
     async function load() {
-      const [session, models] = await Promise.all([fetch('/api/config/excel-session').then(r=>r.json()), fetch('/v1/models').then(r=>r.json())]);
+      await loadKey();
+      const [session, models] = await Promise.all([fetch('/api/config/excel-session').then(r=>r.json()), fetch('/v1/models',{headers:authHeaders()}).then(r=>r.json())]);
       const configured = session.configured && !session.expired;
       $('dot').className = 'dot ' + (configured ? 'ok' : session.configured ? 'bad' : '');
       $('statusTitle').textContent = configured ? '已认证，可发送请求' : session.configured ? 'session 已过期' : '尚未认证';
@@ -70,6 +88,9 @@
     }
     $('refresh').onclick = async () => { $('refresh').disabled = true; try { await fetch('/api/config/excel-session',{method:'POST'}); await load(); } finally { $('refresh').disabled = false; } };
     $('clear').onclick = async () => { if (confirm('清除本地 Excel session？')) { await fetch('/api/config/excel-session',{method:'DELETE'}); await load(); } };
+    $('copyKey').onclick = async () => { await navigator.clipboard.writeText($('apiKey').value); $('keyHint').textContent = ' · 已复制'; };
+    $('regenKey').onclick = async () => { if (!confirm('重新生成 API Key？现有客户端配置会立刻失效。')) return; await fetch('/api/config/api-key',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'}); await load(); $('keyHint').textContent = ' · 已重新生成'; };
+    $('saveKey').onclick = async () => { const res = await fetch('/api/config/api-key',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:$('customKey').value})}); const data = await res.json(); if (res.ok) { $('customKey').value=''; await load(); $('keyHint').textContent = ' · 已保存自定义 key'; } else { $('keyHint').textContent = ' · ' + (data.error ? data.error.message : '保存失败'); } };
     load().catch(() => { $('statusTitle').textContent='代理未响应'; $('statusText').textContent='请确认 excel_proxy.py 正在运行。'; $('dot').className='dot bad'; });
   </script>
 </body>

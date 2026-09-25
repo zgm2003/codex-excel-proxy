@@ -15,8 +15,17 @@ py -3 -m venv .venv
 - `http://127.0.0.1:8000/v1/responses`
 - `http://127.0.0.1:8000/v1/models`
 - `http://127.0.0.1:8000/api/config/excel-session`
+- `http://127.0.0.1:8000/api/config/api-key`
 
 启动前请在 Microsoft Excel 的 ChatGPT 插件中登录一次。代理从 Excel WebView2 本地缓存读取 session，不需要 GitHub 账号，也不安装 Copilot SDK。
+
+## 客户端 API Key
+
+`/v1/models` 和 `/v1/responses` 强制校验 API Key，缺失或错误一律返回 `401`。
+
+- 首次启动自动生成 `sk-ghcpexcel-...`，保存在 `%APPDATA%\ghcp_proxy\api-key.json`。
+- 控制台 `http://127.0.0.1:8000/ui` 可以查看、复制、重新生成，或设置自定义 key（16-128 位可打印 ASCII）。
+- 客户端使用 `Authorization: Bearer <key>`，也接受 `x-api-key` 头。
 
 ## 模型
 
